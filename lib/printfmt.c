@@ -212,7 +212,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 				num = -(long long) num;
 			}
 			base = 8;
-			break;
+			goto number;
 
 		// pointer
 		case 'p':
