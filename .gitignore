@@ -17,5 +17,5 @@
 /myapi.key
 /.suf
 
-/.vscode
-/__pycache__
+.vscode/
+__pycache__/
