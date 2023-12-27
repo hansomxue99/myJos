@@ -11,9 +11,11 @@
 #include <kern/pmap.h>
 #include <kern/trap.h>
 #include <kern/monitor.h>
+#include <kern/sched.h>
+#include <kern/cpu.h>
+#include <kern/spinlock.h>
 
 struct Env *envs = NULL;		// All environments
-struct Env *curenv = NULL;		// The current env
 static struct Env *env_free_list;	// Free environment list
 					// (linked by Env->env_link)
 
@@ -34,7 +36,7 @@ static struct Env *env_free_list;	// Free environment list
 // definition of gdt specifies the Descriptor Privilege Level (DPL)
 // of that descriptor: 0 for kernel and 3 for user.
 //
-struct Segdesc gdt[] =
+struct Segdesc gdt[NCPU + 5] =
 {
 	// 0x0 - unused (always faults -- for trapping NULL far pointers)
 	SEG_NULL,
@@ -51,7 +53,8 @@ struct Segdesc gdt[] =
 	// 0x20 - user data segment
 	[GD_UD >> 3] = SEG(STA_W, 0x0, 0xffffffff, 3),
 
-	// 0x28 - tss, initialized in trap_init_percpu()
+	// Per-CPU TSS descriptors (starting from GD_TSS0) are initialized
+	// in trap_init_percpu()
 	[GD_TSS0 >> 3] = SEG_NULL
 };
 
@@ -117,7 +120,7 @@ env_init(void)
 	// Set up envs array
 	// LAB 3: Your code here.
 	env_free_list = NULL;
-	for (int i=NENV-1; i>=0; --i) {
+	for(int i = NENV - 1; i >= 0; --i){
 		envs[i].env_id = 0;
 		envs[i].env_status = ENV_FREE;
 		envs[i].env_link = env_free_list;
@@ -252,6 +255,16 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	e->env_tf.tf_cs = GD_UT | 3;
 	// You will set e->env_tf.tf_eip later.
 
+	// Enable interrupts while in user mode.
+	// LAB 4: Your code here.
+	e->env_tf.tf_eflags = e->env_tf.tf_eflags | FL_IF;
+
+	// Clear the page fault handler until user installs one.
+	e->env_pgfault_upcall = 0;
+
+	// Also clear the IPC receiving flag.
+	e->env_ipc_recving = 0;
+
 	// commit the allocation
 	env_free_list = e->env_link;
 	*newenv_store = e;
@@ -348,7 +361,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	ph = (struct Proghdr *) ((uint8_t *) elf + elf->e_phoff);
 	eph = ph + elf->e_phnum;
 	for (; ph < eph; ph++){
-    	// cprintf("segment: filesz %x memsz %x va %x pa %x offset %x flags %x\n",ph->p_filesz, ph->p_memsz, ph->p_va, ph->p_pa, ph->p_offset, ph->p_flags);
+		// cprintf("segment: filesz %x memsz %x va %x pa %x offset %x flags %x\n",ph->p_filesz, ph->p_memsz, ph->p_va, ph->p_pa, ph->p_offset, ph->p_flags);
 		
 		if(ph->p_type != ELF_PROG_LOAD)
 			continue;
@@ -360,7 +373,7 @@ load_icode(struct Env *e, uint8_t *binary)
 		memcpy((void*)ph->p_va, (void*)elf + ph->p_offset, ph->p_filesz);
 		lcr3(PADDR(kern_pgdir));
 	}
-
+	// cprintf("finish load segment\n");
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
@@ -442,15 +455,26 @@ env_free(struct Env *e)
 
 //
 // Frees environment e.
+// If e was the current env, then runs a new environment (and does not return
+// to the caller).
 //
 void
 env_destroy(struct Env *e)
 {
+	// If e is currently running on other CPUs, we change its state to
+	// ENV_DYING. A zombie environment will be freed the next time
+	// it traps to the kernel.
+	if (e->env_status == ENV_RUNNING && curenv != e) {
+		e->env_status = ENV_DYING;
+		return;
+	}
+
 	env_free(e);
 
-	cprintf("Destroyed the only environment - nothing more to do!\n");
-	while (1)
-		monitor(NULL);
+	if (curenv == e) {
+		curenv = NULL;
+		sched_yield();
+	}
 }
 
 
@@ -463,6 +487,9 @@ env_destroy(struct Env *e)
 void
 env_pop_tf(struct Trapframe *tf)
 {
+	// Record the CPU we are running on for user-space debugging
+	curenv->env_cpunum = cpunum();
+
 	asm volatile(
 		"\tmovl %0,%%esp\n"
 		"\tpopal\n"
@@ -501,7 +528,7 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-	if (curenv) {
+	if (curenv && curenv->env_status == ENV_RUNNING) {
 		curenv->env_status = ENV_RUNNABLE;
 	}
 	curenv = e;
@@ -510,9 +537,10 @@ env_run(struct Env *e)
 	lcr3(PADDR(curenv->env_pgdir));
 
 	// cprintf("start env_pop and running...\n");
-
+	unlock_kernel();
+	//cprintf("id %08x env_pop_tf eip %08x eax %d\n", curenv->env_id, curenv->env_tf.tf_eip, curenv->env_tf.tf_regs.reg_eax);
 	env_pop_tf(&curenv->env_tf);
 
-	panic("env_run not yet implemented");
+	panic("env_run should not reach here");
 }
 
