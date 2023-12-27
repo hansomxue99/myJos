@@ -47,6 +47,7 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+
 TRAPHANDLER_NOEC(handler0, T_DIVIDE)
 TRAPHANDLER_NOEC(handler1, T_DEBUG)
 TRAPHANDLER_NOEC(handler2, T_NMI)
@@ -68,13 +69,18 @@ TRAPHANDLER(handler17, T_ALIGN)
 TRAPHANDLER(handler18, T_MCHK)
 TRAPHANDLER(handler19, T_SIMDERR)
 
-TRAPHANDLER_NOEC(handler_sys, T_SYSCALL)
+TRAPHANDLER_NOEC(handler48, T_SYSCALL)
 
+TRAPHANDLER_NOEC(handler32, IRQ_OFFSET + IRQ_TIMER)
+TRAPHANDLER_NOEC(handler33, IRQ_OFFSET + IRQ_KBD)
+TRAPHANDLER_NOEC(handler34, IRQ_OFFSET + IRQ_SERIAL)
+TRAPHANDLER_NOEC(handler35, IRQ_OFFSET + IRQ_SPURIOUS)
+TRAPHANDLER_NOEC(handler36, IRQ_OFFSET + IRQ_IDE)
+TRAPHANDLER_NOEC(handler37, IRQ_OFFSET + IRQ_ERROR)
 
 /*
  * Lab 3: Your code here for _alltraps
  */
-
 
 .globl		_start
 _alltraps:
