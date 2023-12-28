@@ -4,3 +4,4 @@
 - Lab 2 $\checkmark$
 - Lab 3 $\checkmark$
 - Lab 4 $\checkmark$
+- Lab 5 $\checkmark$
