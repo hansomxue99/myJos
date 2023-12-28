@@ -267,6 +267,20 @@ trap_dispatch(struct Trapframe *tf)
 		return;
 	}
 
+	// Handle keyboard and serial interrupts.
+	// LAB 5: Your code here.
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
+		//cprintf("IRQ_KBD interrupt\n");
+		kbd_intr();
+		return;
+	}
+
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
+		//cprintf("IRQ_SERIAL interrupt\n");
+		serial_intr();
+		return;
+	}
+
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
 	if (tf->tf_cs == GD_KT)

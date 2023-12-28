@@ -132,6 +132,38 @@ sys_env_set_status(envid_t envid, int status)
 	return 0;
 }
 
+// Set envid's trap frame to 'tf'.
+// tf is modified to make sure that user environments always run at code
+// protection level 3 (CPL 3), interrupts enabled, and IOPL of 0.
+//
+// Returns 0 on success, < 0 on error.  Errors are:
+//	-E_BAD_ENV if environment envid doesn't currently exist,
+//		or the caller doesn't have permission to change envid.
+static int
+sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
+{
+	// LAB 5: Your code here.
+	// Remember to check whether the user has supplied us with a good
+	// address!
+	struct Env* e;
+	int result;
+
+	if ((result = envid2env(envid, &e, 1)) < 0){
+		return result;
+	}
+	if (!tf) {
+		return -E_INVAL;
+	}
+	e->env_tf = *tf;
+	e->env_tf.tf_ds = GD_UD | 3;
+	e->env_tf.tf_es = GD_UD | 3;
+	e->env_tf.tf_ss = GD_UD | 3;
+	e->env_tf.tf_cs = GD_UT | 3;
+	e->env_tf.tf_eflags = e->env_tf.tf_eflags | FL_IF;
+	e->env_tf.tf_eflags &= ~FL_IOPL_MASK; 
+	return 0;
+}
+
 // Set the page fault upcall for 'envid' by modifying the corresponding struct
 // Env's 'env_pgfault_upcall' field.  When 'envid' causes a page fault, the
 // kernel will push a fault record onto the exception stack, then branch to
@@ -239,6 +271,7 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	pte_t *pte;
 	
 	if ((uintptr_t)srcva >= UTOP || (uintptr_t)srcva % PGSIZE || (uintptr_t)srcva >= UTOP || (uintptr_t)srcva % PGSIZE) {
+		// cprintf("srcva >= UTOP or srcva is not page-aligned, or dstva >= UTOP or dstva is not page-aligned.");
 		return -E_INVAL;
 	}
 	if (perm & ~PTE_SYSCALL) {
@@ -451,6 +484,8 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_ipc_try_send((envid_t)a1, a2, (void*)a3, (unsigned int)a4);
 	case SYS_ipc_recv:
 		return sys_ipc_recv((void*)a1);
+	case SYS_env_set_trapframe:
+		return sys_env_set_trapframe((envid_t)a1, (struct Trapframe *)a2);
 	default:
 		return -E_INVAL;
 	}
