@@ -5,3 +5,4 @@
 - Lab 3 $\checkmark$
 - Lab 4 $\checkmark$
 - Lab 5 $\checkmark$
+- Lab 6 $\checkmark$
